@@ -1,23 +1,24 @@
+#include <Arduino.h>
 #include "DHT.h"
 #include <WiFi.h>
 #include <Wire.h>
 #include <BH1750.h>
-#include <UTFTGLUE.h>
+#include <MCUFRIEND_kbv.h>
+#include <Adafruit_GFX.h>
 #include <HTTPClient.h>
-#define DHTPIN 4
+#define DHTPIN 26
 #define DHTTYPE DHT11
 
 BH1750 lightMeter;
-UTFTGLUE myGLCD(0,13,12,33,32,15);
+MCUFRIEND_kbv tft;
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "nelvis";
+const char* ssid = "NELVIS";
 const char* password = "092115nac";
 const char* serverUrl = "http://192.168.80.31:8000/sensor";
 
 void setup() {
     Serial.begin(115200);
-    Wire.begin();
     WiFi.begin(ssid, password);
 
     int intentos = 0;
@@ -34,12 +35,19 @@ void setup() {
         ESP.restart();  // Reinicia el ESP32 si no se conecta
     }
 
+    tft.reset();
+    uint16_t ID = tft.readID();
+    tft.begin(ID);
+    tft.fillScreen(0x0000);  // Fondo negro
+    tft.setRotation(-1);  // Ajusta la orientación según tu pantalla
+
     dht.begin();
+    Wire.begin(32, 33);
     lightMeter.begin();
-    randomSeed(analogRead(0));
-    // Setup the LCD
-    myGLCD.InitLCD();
-    myGLCD.setFont(SmallFont);
+
+    tft.setTextColor(0xFFFF);  // Texto blanco
+    tft.setTextSize(2);
+
     Serial.println("Sensor BH1750 iniciado");
     delay(2000);
 }
@@ -57,6 +65,31 @@ void loop() {
 
         Serial.printf("Humedad: %.2f%%  Temperatura: %.2f°C  Luminosidad: %.2f lux\n", h, t, lux);
     
+        tft.fillRect(10, 30, 220, 80, 0x0000);  // Fondo negro sobre los valores previos
+
+        // Escribir los valores en pantalla
+        tft.fillScreen(TFT_BLACK);  // Borra la pantalla
+        tft.setCursor(10, 20);
+        tft.setTextSize(2);
+        tft.setTextColor(TFT_WHITE);
+
+        tft.println("Datos del sensor:");
+
+        tft.setCursor(10, 50);
+        tft.print("Temp: ");
+        tft.print(t, 2);
+        tft.print(" C");
+
+        tft.setCursor(10, 80);
+        tft.print("Humedad: ");
+        tft.print(h, 2);
+        tft.print(" %");
+
+        tft.setCursor(10, 110);
+        tft.print("Luz: ");
+        tft.print(lux, 2);
+        tft.print(" lx");
+
         HTTPClient http;
         http.begin(serverUrl);
         http.addHeader("Content-Type", "application/json");
@@ -82,27 +115,5 @@ void loop() {
         WiFi.disconnect();
         WiFi.reconnect();
     }
-    int buf[478];
-    int x, x2;
-    int y, y2;
-    int r;
-  
-  // Clear the screen and draw the frame
-    myGLCD.clrScr();
-  
-    myGLCD.setColor(255, 0, 0);
-    myGLCD.fillRect(0, 0, 479, 13);
-    myGLCD.setColor(64, 64, 64);
-    myGLCD.fillRect(0, 306, 479, 319);
-    myGLCD.setColor(255, 255, 255);
-    myGLCD.setBackColor(255, 0, 0);
-    myGLCD.print("* Universal Color TFT Display Library *", CENTER, 1);
-    myGLCD.setBackColor(64, 64, 64);
-    myGLCD.setColor(255,255,0);
-
-    myGLCD.print("<http://www.RinkyDinkElectronics.com/>", CENTER, 307);
-
-    myGLCD.setColor(0, 0, 255);
-    myGLCD.drawRect(0, 14, 479, 305);
     delay(10000);
 }
