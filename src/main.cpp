@@ -15,7 +15,7 @@ DHT dht(DHTPIN, DHTTYPE);
 
 const char* ssid = "NELVIS";
 const char* password = "092115nac";
-const char* serverUrl = "http://192.168.80.31:8000/sensor";
+const char* serverUrl = "http://192.168.1.18:8000/sensor";
 
 void setup() {
     Serial.begin(115200);
