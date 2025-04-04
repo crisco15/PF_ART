@@ -6,7 +6,7 @@
 #include <MCUFRIEND_kbv.h>
 #include <Adafruit_GFX.h>
 #include <HTTPClient.h>
-#define DHTPIN 26
+#define DHTPIN 23
 #define DHTTYPE DHT11
 
 BH1750 lightMeter;
@@ -42,7 +42,7 @@ void setup() {
     tft.setRotation(-1);  // Ajusta la orientación según tu pantalla
 
     dht.begin();
-    Wire.begin(32, 33);
+    Wire.begin(19, 18);
     lightMeter.begin();
 
     tft.setTextColor(0xFFFF);  // Texto blanco
