@@ -22,7 +22,7 @@ PubSubClient client(espClient);
 const char* ssid = "NELVIS";
 const char* password = "092115nac";
 const char* serverUrl = "http://presart.ddns.net/sensor";
-const char* mqtt_server = "3.87.63.131";
+const char* mqtt_server = "44.202.124.32";
 
 // Variables de alerta
 bool alertaActiva = false;
