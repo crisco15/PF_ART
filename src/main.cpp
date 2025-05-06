@@ -12,7 +12,7 @@
 #define DHTTYPE DHT11
 
 // Objetos y configuración
-//BH1750 lightMeter;
+BH1750 lightMeter;
 MCUFRIEND_kbv tft;
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
@@ -95,12 +95,18 @@ void mostrarDatosSensores() {
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
-    float lux = 200;
+    float lux = lightMeter.readLightLevel();
 
     if (isnan(h) || isnan(t)) {
         Serial.println(F("Error leyendo el sensor DHT"));
         return;
     }
+
+    // Calibrar y sobrescribir t con el valor calibrado
+    t = 0.0349 * t * t - 0.851 * t + 26.272;
+
+    // Corregir la lectura de lux
+    lux = -0.000179 * lux * lux + 1.481561 * lux - 83.217964;
 
     tft.println("Datos del sensor:");
     tft.setCursor(10, 50);
@@ -118,7 +124,7 @@ void mostrarDatosSensores() {
     tft.print(lux, 2);
     tft.print(" lx");
 
-    Serial.printf("Humedad: %.2f%%  Temp: %.2f°C  Luz: %.2f lux\n", h, t, lux);
+    Serial.printf("Humedad: %.2f%%  TempCalib: %.2f°C  LuzCalib: %.2f lux\n", h, t, lux);
 
     // Enviar datos al servidor
     HTTPClient http;
@@ -197,7 +203,7 @@ void setup() {
 
     dht.begin();
     Wire.begin(19, 18);
-    //lightMeter.begin();
+    lightMeter.begin();
 
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
