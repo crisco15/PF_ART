@@ -7,26 +7,139 @@
 #include <Adafruit_GFX.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
+
 #define DHTPIN 23
 #define DHTTYPE DHT11
 
-BH1750 lightMeter;
+// Objetos y configuración
+//BH1750 lightMeter;
 MCUFRIEND_kbv tft;
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const char* ssid = "NELVIS";
-const char* password = "092115nac";
+// Configuración WiFi y MQTT
+const char* ssid = "Crisco";
+const char* password = "150504yo";
 const char* serverUrl = "http://presart.ddns.net/sensor";
-const char* mqtt_server = "3.87.63.131";
+const char* mqtt_server = "44.206.228.200";
+
+// Variables de alerta
 bool alertaActiva = false;
 unsigned long alertaInicio = 0;
 const unsigned long duracionAlerta = 10000; // 10 segundos
+bool pantallaAlertaMostrada = false;
 String mensajeAlerta = "";
 
+// Variables de envío de datos
 unsigned long previousMillis = 0;
-const long interval = 10000; // Intervalo de 10 segundos para enviar datos
+const long interval = 10000; // Cada 10 segundos
+
+// Funciones
+void dibujarIconoAlerta() {
+    int baseWidth = 120;
+    int height = 100;
+    int centerX = tft.width() / 2;
+    int centerY = tft.height() / 2 - 25;
+
+    int x0 = centerX - baseWidth / 2;
+    int y0 = centerY + height / 2;
+    int x1 = centerX + baseWidth / 2;
+    int y1 = centerY + height / 2;
+    int x2 = centerX;
+    int y2 = centerY - height / 2;
+
+    // Triángulo negro (borde)
+    tft.fillTriangle(x0, y0, x1, y1, x2, y2, TFT_BLACK);
+
+    // Triángulo amarillo (interior)
+    int borde = 5;
+    tft.fillTriangle(
+        x0 + borde, y0 - borde,
+        x1 - borde, y1 - borde,
+        x2, y2 + borde,
+        TFT_YELLOW
+    );
+
+    // Signo de exclamación
+    tft.fillRect(centerX - 5, centerY - 20, 10, 40, TFT_BLACK);
+    tft.fillCircle(centerX, centerY + 30, 6, TFT_BLACK);
+}
+
+void mostrarAlerta() {
+    tft.fillScreen(TFT_RED);
+    dibujarIconoAlerta();
+
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(3);
+    String titulo = "ALERTA!";
+    int16_t x1, y1;
+    uint16_t w, h;
+    tft.getTextBounds(titulo, 0, 0, &x1, &y1, &w, &h);
+    int textoX = (tft.width() - w) / 2;
+    tft.setCursor(textoX, 10);
+    tft.println(titulo);
+
+    tft.setTextSize(2);
+    tft.setCursor(10, tft.height() - 60);
+    tft.println("Precaucion:");
+    tft.setCursor(10, tft.height() - 30);
+    tft.println(mensajeAlerta);
+}
+
+void mostrarDatosSensores() {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(2);
+    tft.setCursor(10, 20);
+
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+    float lux = 200;
+
+    if (isnan(h) || isnan(t)) {
+        Serial.println(F("Error leyendo el sensor DHT"));
+        return;
+    }
+
+    tft.println("Datos del sensor:");
+    tft.setCursor(10, 50);
+    tft.print("Temp: ");
+    tft.print(t, 2);
+    tft.print(" C");
+
+    tft.setCursor(10, 80);
+    tft.print("Humedad: ");
+    tft.print(h, 2);
+    tft.print(" %");
+
+    tft.setCursor(10, 110);
+    tft.print("Luz: ");
+    tft.print(lux, 2);
+    tft.print(" lx");
+
+    Serial.printf("Humedad: %.2f%%  Temp: %.2f°C  Luz: %.2f lux\n", h, t, lux);
+
+    // Enviar datos al servidor
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+    String jsonData = "{\"temperatura\":" + String(t, 2) + ",\"humedad\":" + String(h, 2) + ",\"lux\":" + String(lux, 2) + "}";
+    int httpResponseCode = http.POST(jsonData);
+    http.setTimeout(5000);
+
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+
+    if (httpResponseCode == 200) {
+        Serial.println("Datos enviados correctamente.");
+        Serial.println("Respuesta servidor: " + http.getString());
+    } else {
+        Serial.println("Error enviando datos.");
+    }
+
+    http.end();
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
     mensajeAlerta = "";
@@ -37,6 +150,22 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
     alertaActiva = true;
     alertaInicio = millis();
+    pantallaAlertaMostrada = false; // forzar que se dibuje la pantalla roja
+}
+
+void reconnect() {
+    while (!client.connected()) {
+        Serial.print("Intentando conexión MQTT...");
+        if (client.connect("ESP32Client")) {
+            Serial.println("Conectado");
+            client.subscribe("arte/alertas");
+        } else {
+            Serial.print("Fallo, rc=");
+            Serial.print(client.state());
+            Serial.println(" intentando de nuevo en 5 segundos");
+            delay(5000);
+        }
+    }
 }
 
 void setup() {
@@ -47,7 +176,7 @@ void setup() {
     client.setCallback(callback);
 
     int intentos = 0;
-    while (WiFi.status() != WL_CONNECTED && intentos < 20) {  // Limitar intentos
+    while (WiFi.status() != WL_CONNECTED && intentos < 20) {
         delay(1000);
         Serial.print(".");
         intentos++;
@@ -57,142 +186,59 @@ void setup() {
         Serial.println("\nConectado a WiFi");
     } else {
         Serial.println("\nNo se pudo conectar a WiFi, reiniciando...");
-        ESP.restart();  // Reinicia el ESP32 si no se conecta
+        ESP.restart();
     }
 
     tft.reset();
     uint16_t ID = tft.readID();
     tft.begin(ID);
-    tft.fillScreen(0x0000);  // Fondo negro
-    tft.setRotation(-1);  // Ajusta la orientación según tu pantalla
+    tft.fillScreen(TFT_BLACK);
+    tft.setRotation(-1);
 
     dht.begin();
     Wire.begin(19, 18);
-    lightMeter.begin();
+    //lightMeter.begin();
 
-    tft.setTextColor(0xFFFF);  // Texto blanco
+    tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
 
-    Serial.println("Sensor BH1750 iniciado");
+    //Serial.println("Sensor BH1750 iniciado");
     delay(2000);
-}
-
-void reconnect() {
-    while (!client.connected()) {
-      if (client.connect("ESP32Client")) {
-        client.subscribe("arte/alertas");
-      } else {
-        delay(5000);
-      }
-    }
-}
-
-void dibujarIconoAlerta(int x, int y) {
-    // Triángulo amarillo (advertencia)
-    tft.fillTriangle(
-        x, y + 60,        // Punto inferior izquierdo
-        x + 60, y + 60,   // Punto inferior derecho
-        x + 30, y         // Punto superior
-        , TFT_YELLOW
-    );
-
-    // Borde negro del triángulo
-    tft.drawTriangle(
-        x, y + 60,
-        x + 60, y + 60,
-        x + 30, y,
-        TFT_BLACK
-    );
-
-    // Signo de exclamación
-    tft.fillRect(x + 28, y + 20, 4, 20, TFT_BLACK);  // línea vertical
-    tft.fillCircle(x + 30, y + 45, 3, TFT_BLACK);    // punto inferior
 }
 
 void loop() {
     client.loop();
 
-    if (millis() - alertaInicio < duracionAlerta) {
-        tft.fillScreen(TFT_RED);
-        dibujarIconoAlerta(10, 10);  // posición del triángulo en pantalla
-    
-        tft.setTextColor(TFT_WHITE);
-        tft.setTextSize(3);
-        tft.setCursor(80, 20);
-        tft.println("¡ALERTA!");
-    
-        tft.setTextSize(2);
-        tft.setCursor(10, 90);
-        tft.println("Precaución:");
-        tft.setCursor(10, 120);
-        tft.println(mensajeAlerta);
-        return;
+    unsigned long tiempoActual = millis();
+
+    // Revisar conexión WiFi periódicamente
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi desconectado. Intentando reconectar...");
+        WiFi.disconnect();
+        WiFi.reconnect();
+        delay(1000);
     }
 
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-        previousMillis = currentMillis;
-
-        if (WiFi.status() == WL_CONNECTED) {
-            float h = dht.readHumidity();
-            float t = dht.readTemperature();
-            float lux = lightMeter.readLightLevel();
-
-            if (isnan(h) || isnan(t)) {
-                Serial.println(F("Failed to read from DHT sensor!"));
-                return;
-            }
-
-            Serial.printf("Humedad: %.2f%%  Temperatura: %.2f°C  Luminosidad: %.2f lux\n", h, t, lux);
-        
-            tft.fillScreen(TFT_BLACK);
-            tft.setCursor(10, 20);
-            tft.setTextSize(2);
-            tft.setTextColor(TFT_WHITE);
-
-            tft.println("Datos del sensor:");
-            tft.setCursor(10, 50);
-            tft.print("Temp: ");
-            tft.print(t, 2);
-            tft.print(" C");
-
-            tft.setCursor(10, 80);
-            tft.print("Humedad: ");
-            tft.print(h, 2);
-            tft.print(" %");
-
-            tft.setCursor(10, 110);
-            tft.print("Luz: ");
-            tft.print(lux, 2);
-            tft.print(" lx");
-
-            HTTPClient http;
-            http.begin(serverUrl);
-            http.addHeader("Content-Type", "application/json");
-
-            String jsonData = "{\"temperatura\":" + String(t, 2) + ",\"humedad\":" + String(h, 2) + ",\"lux\":" + String(lux,2) + "}";
-            int httpResponseCode = http.POST(jsonData);
-            http.setTimeout(5000);
-
-            Serial.print("Código de respuesta: ");
-            Serial.println(httpResponseCode);
-
-            if (httpResponseCode == 200) {
-                Serial.println("Datos enviados correctamente.");
-                Serial.println("Respuesta del servidor: " + http.getString());
-            } else {
-                Serial.println("Error al enviar datos.");
-            }
-
-            http.end();
-
-            if (!client.connected()) {
-                reconnect();
-            }
-        } else {
-            Serial.println("WiFi desconectado. Intentando reconectar...");
-            WiFi.disconnect();
-            WiFi.reconnect();
+    if (alertaActiva) {
+        if (!pantallaAlertaMostrada) {
+            mostrarAlerta();
+            pantallaAlertaMostrada = true;
         }
+
+        if (tiempoActual - alertaInicio > duracionAlerta) {
+            alertaActiva = false;
+            pantallaAlertaMostrada = false; // Para que en la siguiente alerta se redibuje
+            previousMillis = tiempoActual;  // Reiniciar temporizador para que no se acumulen lecturas
+            mostrarDatosSensores();         // Volver a mostrar los datos inmediatamente
+        }
+    } else {
+        if (tiempoActual - previousMillis >= interval) {
+            previousMillis = tiempoActual;
+            mostrarDatosSensores();
+        }
+    }
+
+    if (!client.connected()) {
+        reconnect();
     }
 }
