@@ -12,17 +12,17 @@
 #define DHTTYPE DHT11
 
 // Objetos y configuración
-BH1750 lightMeter;
+//BH1750 lightMeter;
 MCUFRIEND_kbv tft;
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 // Configuración WiFi y MQTT
-const char* ssid = "NELVIS";
-const char* password = "092115nac";
+const char* ssid = "Crisco";
+const char* password = "150504yo";
 const char* serverUrl = "http://presart.ddns.net/sensor";
-const char* mqtt_server = "44.202.124.32";
+const char* mqtt_server = "44.206.228.200";
 
 // Variables de alerta
 bool alertaActiva = false;
@@ -82,7 +82,7 @@ void mostrarAlerta() {
 
     tft.setTextSize(2);
     tft.setCursor(10, tft.height() - 60);
-    tft.println("Precaución:");
+    tft.println("Precaucion:");
     tft.setCursor(10, tft.height() - 30);
     tft.println(mensajeAlerta);
 }
@@ -95,7 +95,7 @@ void mostrarDatosSensores() {
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
-    float lux = lightMeter.readLightLevel();
+    float lux = 200;
 
     if (isnan(h) || isnan(t)) {
         Serial.println(F("Error leyendo el sensor DHT"));
@@ -197,12 +197,12 @@ void setup() {
 
     dht.begin();
     Wire.begin(19, 18);
-    lightMeter.begin();
+    //lightMeter.begin();
 
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
 
-    Serial.println("Sensor BH1750 iniciado");
+    //Serial.println("Sensor BH1750 iniciado");
     delay(2000);
 }
 
